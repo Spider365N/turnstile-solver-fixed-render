@@ -63,23 +63,16 @@ def _solver_proxy() -> Optional[str]:
 
 
 def _headless_mode():
-    """Prefer Camoufox-managed virtual display on Linux containers.
+    """Always prefer Camoufox-managed virtual display on restricted platforms.
 
-    Real Cloudflare widgets refuse pure --headless=new builds (missing
-    GPU/audio signals + HeadlessChrome UA). On restricted PaaS
-    (Render, Railway, etc.) the Firefox content-process sandbox also
-    fails with `Sandbox: writing /proc/self/uid_map: EPERM` because
-    nested user namespaces are blocked. Camoufox's headless="virtual"
-    starts its own isolated Xvfb and is the most reliable path.
-
-    Override via HEADLESS=true|false|virtual.
+    Shared Xvfb + HEADLESS=false is unreliable on Render/Railway (race on
+    :99 → "cannot open display"). Pure headless is rejected by real CF
+    widgets. headless="virtual" lets Camoufox start its own isolated Xvfb.
     """
     mode = (os.environ.get("HEADLESS") or "virtual").lower().strip()
     if mode in ("true", "1", "yes"):
         return True
-    if mode in ("false", "0", "no", "headed"):
-        return False
-    # Default + explicit "virtual"
+    # Treat false/headed the same as virtual — shared Xvfb is broken here.
     return "virtual"
 
 

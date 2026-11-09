@@ -625,15 +625,20 @@ async def on_startup(app):
     app["housekeeping_task"] = asyncio.ensure_future(_housekeeping_loop())
 
     proxy_url, proxy_kind = _challenge_proxy()
-    # Always warm the browser at startup — /solve still routes through
-    # Camoufox even when a challenge proxy is configured. Lazy-loading the
-    # browser meant the first /solve paid a ~30s cold-start tax.
-    pool = await get_pool(MAX_WORKERS)
-    if proxy_url:
-        print(f"[solver] {proxy_kind} delegation enabled ({proxy_url}); browser warm, "
-              f"MAX_WORKERS={pool.max_concurrent}", flush=True)
-    else:
-        print(f"[solver] browser warm, MAX_WORKERS={pool.max_concurrent}", flush=True)
+    # Try to warm the browser at startup, but NEVER crash the process if it
+    # fails. On Render free tier a failed Xvfb/Camoufox launch used to kill
+    # the whole service → endless restart loop → 502 Bad Gateway.
+    # First real /solve will call ensure() again (lazy recovery).
+    try:
+        pool = await get_pool(MAX_WORKERS)
+        if proxy_url:
+            print(f"[solver] {proxy_kind} delegation enabled ({proxy_url}); browser warm, "
+                  f"MAX_WORKERS={pool.max_concurrent}", flush=True)
+        else:
+            print(f"[solver] browser warm, MAX_WORKERS={pool.max_concurrent}", flush=True)
+    except Exception as e:
+        log.warning("browser warm-up failed (will retry on first request): %s", e)
+        print(f"[solver] browser warm-up deferred (will launch on first /solve)", flush=True)
 
 
 async def on_cleanup(app):
